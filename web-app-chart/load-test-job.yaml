@@ -1,0 +1,14 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: load-test-job
+  namespace: selfhealing-assignment
+spec:
+  template:
+    spec:
+      containers:
+      - name: hey-container
+        image: polinux/hey:latest
+        args: ["-n", "100000", "-c", "50", "http://web-app-helm-web-app-chart-service.selfhealing-assignment.svc.cluster.local"]
+      restartPolicy: Never
+  backoffLimit: 4

@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: default-limits
+  namespace: selfhealing-assignment
+spec:
+  limits:
+  - default:
+      memory: "256Mi"
+      cpu: "200m"
+    defaultRequest:
+      memory: "128Mi"
+      cpu: "100m"
+    max:
+      memory: "1Gi"
+      cpu: "500m"
+    min:
+      memory: "64Mi"
+      cpu: "50m"
+    type: Container
