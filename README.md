@@ -51,7 +51,7 @@ flowchart TB
 | Web app | `web-app-configmap.yaml` | The HTML page, mounted into nginx |
 | | `web-app-deployment.yaml` | 3 replicas, rolling update, startup, liveness and readiness probes, CPU and memory limits |
 | | `web-app-service.yaml` | NodePort service on 30000 and an internal ClusterIP service |
-| Helm | `web-app-chart/`, `values.yaml` | Helm chart for the web app, with custom values for replicas, image, NodePort 30001 and probes |
+| Helm | `web-app-chart/`, `values.yaml` | Helm chart for the web app: replicas, rolling update, all three probes, resource limits, NodePort 30001 and optional autoscaling, all set from `values.yaml` |
 | Failure tests | `resource-test-deployment.yaml` | 2 pods running `stress` with 100 MB memory each, inside their limits |
 | | `web-app-chart/memory-hog-pod.yaml` | Asks for 1500 MB with a 900 Mi limit, so Kubernetes OOM-kills it |
 | | `web-app-chart/load-test-job.yaml` | `hey` load test: 100,000 requests, 50 at a time |
@@ -86,9 +86,16 @@ kubectl apply -f web-app-chart/prometheus-rbac.yaml -f web-app-chart/prometheus-
 kubectl apply -f web-app-chart/elasticsearch-deployment.yaml -f web-app-chart/elasticsearch-service.yaml \
               -f web-app-chart/fluentd-daemonset.yaml
 
-# 4. Helm version of the app
+# 4. Helm version of the app (on NodePort 30001)
 helm install web-app-helm ./web-app-chart -f values.yaml -n selfhealing-assignment
+helm test web-app-helm -n selfhealing-assignment
+
+# 5. Load test against the Helm release
+kubectl apply -f web-app-chart/load-test-job.yaml
+kubectl logs -n selfhealing-assignment job/load-test-job
 ```
+
+Prometheus: `kubectl port-forward -n selfhealing-assignment svc/prometheus-service 9090:9090`, then open http://localhost:9090/targets.
 
 ## Prove it heals
 
@@ -111,15 +118,23 @@ kubectl describe resourcequota namespace-quota -n selfhealing-assignment
 
 Elasticsearch runs with security turned off and a demo password, for local testing only.
 
-## What I'd improve now
+## Review and fixes (November 2026)
 
-Looking back at this assignment, these are the changes I'd make next:
+I went back over this assignment and fixed what didn't work as intended:
 
-- **Helm templates:** the chart is the default Helm scaffold, so it doesn't yet read the probe, rolling-update and NodePort settings in `values.yaml`. The templates need updating to use them.
-- **Load test target:** `load-test-job.yaml` points at `web-app-helm-web-app-chart-service`, but the chart names the service `web-app-helm-web-app-chart`.
-- **Autoscaling:** `hpa.yaml` uses `autoscaling/v2beta1`, which newer Kubernetes versions removed. It should move to `autoscaling/v2`.
-- **Metrics:** Prometheus only scrapes pods with `prometheus.io/scrape` annotations, so the web app needs those annotations (and an exporter) to show up.
-- **Logs UI:** add Kibana so the logs in Elasticsearch can be searched in a browser.
+| Issue | Fix |
+| --- | --- |
+| The Helm chart was the default scaffold, so it ignored the probe, rolling-update and NodePort settings in `values.yaml` | Templates now render startup, liveness and readiness probes, the update strategy and the NodePort from values |
+| `load-test-job.yaml` called `web-app-helm-web-app-chart-service`, a service that doesn't exist | Points at `web-app-helm-web-app-chart`, the name the chart actually creates |
+| `hpa.yaml` used `autoscaling/v2beta1`, removed in Kubernetes 1.26 | Moved to `autoscaling/v2` |
+| Prometheus forced every target to port 9100, and no pod had scrape annotations, so it collected nothing | Uses each pod's `prometheus.io/port`; Prometheus itself is annotated, so discovery has a working target |
+| `linux-amd64/` held Helm's own README and license from the download | Removed |
+
+## Next steps
+
+- Add an nginx metrics exporter to the web app so its traffic shows up in Prometheus
+- Add Kibana so the logs in Elasticsearch can be searched in a browser
+- Turn on Elasticsearch security instead of the demo setup
 
 ## Skills demonstrated
 
