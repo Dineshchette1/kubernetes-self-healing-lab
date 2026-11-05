@@ -8,6 +8,10 @@ spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
+  {{- with .Values.strategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "web-app-chart.selectorLabels" . | nindent 6 }}
@@ -37,14 +41,36 @@ spec:
             - name: http
               containerPort: {{ .Values.service.port }}
               protocol: TCP
+          {{- with .Values.probes }}
+          {{- if .startup.enabled }}
+          startupProbe:
+            httpGet:
+              path: /
+              port: http
+            failureThreshold: {{ .startup.failureThreshold }}
+            periodSeconds: {{ .startup.periodSeconds }}
+          {{- end }}
+          {{- if .liveness.enabled }}
           livenessProbe:
             httpGet:
               path: /
               port: http
+            initialDelaySeconds: {{ .liveness.initialDelaySeconds }}
+            periodSeconds: {{ .liveness.periodSeconds }}
+            timeoutSeconds: {{ .liveness.timeoutSeconds }}
+            failureThreshold: {{ .liveness.failureThreshold }}
+          {{- end }}
+          {{- if .readiness.enabled }}
           readinessProbe:
             httpGet:
               path: /
               port: http
+            initialDelaySeconds: {{ .readiness.initialDelaySeconds }}
+            periodSeconds: {{ .readiness.periodSeconds }}
+            timeoutSeconds: {{ .readiness.timeoutSeconds }}
+            failureThreshold: {{ .readiness.failureThreshold }}
+          {{- end }}
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}
